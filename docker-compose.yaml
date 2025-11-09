@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  backend:
+    build: .
+    container_name: rust_api
+    depends_on:
+      redis:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/
+      CASSANDRA_HOST: cassandra
+    ports:
+      - "3000:3000"
+    networks:
+      - app_net
+
+  redis:
+    image: redis:8
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - app_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+
+  cassandra:
+    image: scylladb/scylla:6.0
+    container_name: cassandra
+    ports:
+      - "9042:9042"
+    networks:
+      - app_net
+    volumes:
+      - ./init.cql:/docker-entrypoint-initdb.d/init.cql
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'USE shortener; EXIT'"]
+      interval: 10s        # checa a cada 10s
+      timeout: 15s         # aguarda até 15s por resposta
+      retries: 30          # permite até 30 tentativas
+      start_period: 90s    # espera até 90s antes da 1ª checagem
+
+
+networks:
+  app_net:
+    driver: bridge
