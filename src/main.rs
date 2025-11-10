@@ -8,17 +8,12 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, sync::Arc};
 use scylla::{Session, SessionBuilder, FromRow};
-// CORREÇÃO 1: Usar MultiplexedConnection, que é clonável e thread-safe
 use redis::aio::MultiplexedConnection; 
 use redis::AsyncCommands;
 use rand::{SeedableRng, seq::SliceRandom};
 use rand_chacha::ChaCha8Rng;
 use blake3;
 
-// A importação de tokio::net::TcpListener na linha 15 já foi removida
-// pois ela estava duplicada e gerando um warning.
-
-// CORREÇÃO 2: Atualizar o tipo no AppState
 pub struct AppState {
     pub redis: MultiplexedConnection,
     pub cassandra: Session,
@@ -70,7 +65,6 @@ async fn create_shorten_url(
 ) -> impl IntoResponse {
     let long_url = payload.long_url;
 
-    // A MultiplexedConnection é clonável, resolvendo o erro E0599 na linha 70.
     // O clone é necessário para que `redis_conn` possa ser mutável para a chamada `incr`.
     let mut redis_conn = state.redis.clone();
     
@@ -141,17 +135,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Redis
     let redis_client = redis::Client::open(REDIS_URL)?;
-    // CORREÇÃO 3: Usar o método correto para obter uma MultiplexedConnection
     let redis_conn = redis_client.get_multiplexed_async_connection().await?;
 
     // Cassandra
     let cassandra = SessionBuilder::new()
         .known_node(CASSANDRA_NODE)
-        .use_keyspace("shortener", false)
         .build()
         .await?;
 
-    println!("Connected to Redis and Cassandra");
+    //  Cria o keyspace se não existir
+    cassandra
+        .query(
+            "CREATE KEYSPACE IF NOT EXISTS shortener WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};",
+            &[],
+        )
+        .await?;
+
+    // Usa o keyspace
+    cassandra.use_keyspace("shortener", false).await?;
+
+    // Cria a tabela se não existir
+    cassandra
+        .query(
+            "CREATE TABLE IF NOT EXISTS urls (
+                short_url text PRIMARY KEY,
+                long_url text,
+                created_at timestamp
+            );",
+            &[],
+        )
+        .await?;
+
+    println!("Connected to Redis and Cassandra (keyspace ready)");
 
     // Shared state
     let state = Arc::new(AppState {

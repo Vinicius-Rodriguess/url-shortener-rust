@@ -37,15 +37,13 @@ services:
       - "9042:9042"
     networks:
       - app_net
-    volumes:
-      - ./init.cql:/docker-entrypoint-initdb.d/init.cql
+    command: --smp 1 --memory 750M
     healthcheck:
-      test: ["CMD-SHELL", "cqlsh -e 'USE shortener; EXIT'"]
-      interval: 10s        # checa a cada 10s
-      timeout: 15s         # aguarda até 15s por resposta
-      retries: 30          # permite até 30 tentativas
-      start_period: 90s    # espera até 90s antes da 1ª checagem
-
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES;'"]
+      interval: 20s
+      timeout: 20s
+      retries: 30
+      start_period: 120s
 
 networks:
   app_net:
